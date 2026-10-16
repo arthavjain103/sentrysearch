@@ -106,6 +106,24 @@ def detect_index(
     return first or (None, None)
 
 
+def list_populated_indexes(
+    db_path: str | Path | None = None,
+    backend: str | None = None,
+) -> list[tuple[str, str | None]]:
+    """Return ``(backend, model)`` for every index with data.
+
+    Unlike :func:`detect_index` — which returns only the first match in
+    priority order — this lists *all* populated backend/model combinations
+    so callers like ``sentrysearch stats`` can report every index instead
+    of just one. Returns ``[]`` when no index contains data.
+    """
+    db_path = str(db_path or DEFAULT_DB_PATH)
+    if not Path(db_path).exists():
+        return []
+    client = chromadb.PersistentClient(path=db_path)
+    return list(_indexes_with_data(client, backend))
+
+
 def _indexes_with_data(client, backend: str | None):
     """Yield ``(backend, model)`` for each non-empty index, in priority order."""
     existing = {c.name for c in client.list_collections()}

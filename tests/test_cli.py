@@ -68,7 +68,7 @@ class TestModelDashscopeFlagConflict:
 class TestStatsCommand:
     def test_stats_empty(self, runner):
         with patch("sentrysearch.store.SentryStore") as MockStore, \
-             patch("sentrysearch.store.detect_index", return_value=(None, None)):
+             patch("sentrysearch.store.list_populated_indexes", return_value=[]):
             inst = MagicMock()
             inst.get_stats.return_value = {
                 "total_chunks": 0, "unique_source_files": 0, "source_files": [],
@@ -80,7 +80,8 @@ class TestStatsCommand:
 
     def test_stats_with_data(self, runner):
         with patch("sentrysearch.store.SentryStore") as MockStore, \
-             patch("sentrysearch.store.detect_index", return_value=("local", "qwen2b")):
+             patch("sentrysearch.store.list_populated_indexes",
+                   return_value=[("local", "qwen2b")]):
             inst = MagicMock()
             inst.get_stats.return_value = {
                 "total_chunks": 10,
@@ -89,7 +90,7 @@ class TestStatsCommand:
             }
             # A legacy dashcam_chunks_local index has no embedding_backend
             # metadata, so get_backend() reports "gemini" for it. The text
-            # output must follow detect_index(), like --json does.
+            # output must follow list_populated_indexes(), like --json does.
             inst.get_backend.return_value = "gemini"
             MockStore.return_value = inst
             result = runner.invoke(cli, ["stats"])
@@ -102,7 +103,7 @@ class TestStatsCommand:
     def test_stats_json_empty(self, runner):
         import json
         with patch("sentrysearch.store.SentryStore") as MockStore, \
-             patch("sentrysearch.store.detect_index", return_value=(None, None)):
+             patch("sentrysearch.store.list_populated_indexes", return_value=[]):
             inst = MagicMock()
             inst.get_stats.return_value = {
                 "total_chunks": 0, "unique_source_files": 0, "source_files": [],
@@ -129,7 +130,8 @@ class TestStatsCommand:
         file_b.write_text("b")
 
         with patch("sentrysearch.store.SentryStore") as MockStore, \
-             patch("sentrysearch.store.detect_index", return_value=("gemini", None)):
+             patch("sentrysearch.store.list_populated_indexes",
+                   return_value=[("gemini", None)]):
             inst = MagicMock()
             inst.get_stats.return_value = {
                 "total_chunks": 1234,
@@ -146,6 +148,63 @@ class TestStatsCommand:
             assert data["unique_source_files"] == 3
             assert data["source_files"] == [str(file_a), str(file_b), str(file_gone)]
             assert data["missing_files"] == [str(file_gone)]
+
+    def test_stats_multiple_backends(self, runner):
+        with patch("sentrysearch.store.SentryStore") as MockStore, \
+             patch("sentrysearch.store.list_populated_indexes",
+                   return_value=[("gemini", None), ("local", "qwen8b")]):
+            gemini_inst = MagicMock()
+            gemini_inst.get_stats.return_value = {
+                "total_chunks": 812,
+                "unique_source_files": 20,
+                "source_files": ["/v/gemini.mp4"],
+            }
+            local_inst = MagicMock()
+            local_inst.get_stats.return_value = {
+                "total_chunks": 340,
+                "unique_source_files": 10,
+                "source_files": ["/v/local.mp4"],
+            }
+            MockStore.side_effect = [gemini_inst, local_inst]
+            result = runner.invoke(cli, ["stats"])
+            assert result.exit_code == 0
+            assert "812" in result.output
+            assert "340" in result.output
+            assert "gemini" in result.output
+            assert "qwen8b" in result.output
+            assert "/v/gemini.mp4" in result.output
+            assert "/v/local.mp4" in result.output
+
+    def test_stats_json_multiple_backends_returns_list(self, runner, tmp_path):
+        import json
+        file_a = tmp_path / "a.mp4"
+        file_a.write_text("a")
+        with patch("sentrysearch.store.SentryStore") as MockStore, \
+             patch("sentrysearch.store.list_populated_indexes",
+                   return_value=[("gemini", None), ("local", "qwen8b")]):
+            gemini_inst = MagicMock()
+            gemini_inst.get_stats.return_value = {
+                "total_chunks": 812,
+                "unique_source_files": 1,
+                "source_files": [str(file_a)],
+            }
+            local_inst = MagicMock()
+            local_inst.get_stats.return_value = {
+                "total_chunks": 340,
+                "unique_source_files": 1,
+                "source_files": [str(file_a)],
+            }
+            MockStore.side_effect = [gemini_inst, local_inst]
+            result = runner.invoke(cli, ["stats", "--json"])
+            assert result.exit_code == 0
+            data = json.loads(result.output)
+            assert isinstance(data, list)
+            assert len(data) == 2
+            assert data[0]["backend"] == "gemini"
+            assert data[0]["total_chunks"] == 812
+            assert data[1]["backend"] == "local"
+            assert data[1]["model"] == "qwen8b"
+            assert data[1]["total_chunks"] == 340
 
 
 class TestSearchCommand:

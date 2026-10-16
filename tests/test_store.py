@@ -461,6 +461,53 @@ class TestDetectIndex:
         assert detect_index(tmp_path / "db") == ("qwen-cloud", "qwen3-vl-embedding")
 
 
+class TestListPopulatedIndexes:
+    def test_empty_db_returns_empty_list(self, tmp_path):
+        from sentrysearch.store import SentryStore, list_populated_indexes
+
+        SentryStore(db_path=tmp_path / "db", backend="gemini")
+        assert list_populated_indexes(tmp_path / "db") == []
+
+    def test_nonexistent_path_returns_empty_list(self, tmp_path):
+        from sentrysearch.store import list_populated_indexes
+
+        assert list_populated_indexes(tmp_path / "no_such_dir") == []
+
+    def test_single_backend(self, tmp_path):
+        from sentrysearch.store import SentryStore, list_populated_indexes
+
+        SentryStore(db_path=tmp_path / "db", backend="gemini").add_chunk(
+            "c1", _make_embedding(),
+            {"source_file": "v.mp4", "start_time": 0.0, "end_time": 30.0})
+        assert list_populated_indexes(tmp_path / "db") == [("gemini", None)]
+
+    def test_lists_all_populated_indexes(self, tmp_path):
+        from sentrysearch.store import SentryStore, list_populated_indexes
+
+        db = tmp_path / "db"
+        emb = _make_embedding()
+        SentryStore(db_path=db, backend="gemini").add_chunk(
+            "g1", emb,
+            {"source_file": "g.mp4", "start_time": 0.0, "end_time": 30.0})
+        SentryStore(db_path=db, backend="local", model="qwen8b").add_chunk(
+            "l1", emb,
+            {"source_file": "l.mp4", "start_time": 0.0, "end_time": 30.0})
+        assert list_populated_indexes(db) == [
+            ("gemini", None), ("local", "qwen8b"),
+        ]
+
+    def test_skips_empty_collections(self, tmp_path):
+        from sentrysearch.store import SentryStore, list_populated_indexes
+
+        db = tmp_path / "db"
+        # Create an empty gemini collection plus populated local one.
+        SentryStore(db_path=db, backend="gemini")
+        SentryStore(db_path=db, backend="local", model="qwen2b").add_chunk(
+            "l1", _make_embedding(),
+            {"source_file": "v.mp4", "start_time": 0.0, "end_time": 30.0})
+        assert list_populated_indexes(db) == [("local", "qwen2b")]
+
+
 class TestBackendInstalled:
     def test_core_backends_always_installed(self):
         from sentrysearch.store import _backend_installed
