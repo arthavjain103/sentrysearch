@@ -68,60 +68,38 @@ class TestModelDashscopeFlagConflict:
 class TestStatsCommand:
     def test_stats_empty(self, runner):
         with patch("sentrysearch.store.SentryStore") as MockStore, \
-             patch("sentrysearch.store.list_populated_indexes", return_value=[]):
-            inst = MagicMock()
-            inst.get_stats.return_value = {
-                "total_chunks": 0, "unique_source_files": 0, "source_files": [],
-            }
-            MockStore.return_value = inst
+             patch("sentrysearch.store.get_all_stats", return_value=[]):
             result = runner.invoke(cli, ["stats"])
             assert result.exit_code == 0
-            assert "empty" in result.output.lower() or "0" in result.output
+            assert "empty" in result.output.lower()
+            # stats must not build a store (which would create collections).
+            MockStore.assert_not_called()
 
     def test_stats_with_data(self, runner):
         with patch("sentrysearch.store.SentryStore") as MockStore, \
-             patch("sentrysearch.store.list_populated_indexes",
-                   return_value=[("local", "qwen2b")]):
-            inst = MagicMock()
-            inst.get_stats.return_value = {
-                "total_chunks": 10,
-                "unique_source_files": 2,
-                "source_files": ["/a/video1.mp4", "/b/video2.mp4"],
-            }
-            # A legacy dashcam_chunks_local index has no embedding_backend
-            # metadata, so get_backend() reports "gemini" for it. The text
-            # output must follow list_populated_indexes(), like --json does.
-            inst.get_backend.return_value = "gemini"
-            MockStore.return_value = inst
+             patch("sentrysearch.store.get_all_stats", return_value=[{
+                 "backend": "local",
+                 "model": "qwen2b",
+                 "total_chunks": 10,
+                 "unique_source_files": 2,
+                 "source_files": ["/a/video1.mp4", "/b/video2.mp4"],
+             }]):
             result = runner.invoke(cli, ["stats"])
             assert result.exit_code == 0
             assert "10" in result.output
             assert "qwen2b" in result.output
             assert "local" in result.output
             assert "gemini" not in result.output
+            MockStore.assert_not_called()
 
-    def test_stats_json_empty(self, runner):
+    def test_stats_json_empty_is_a_list(self, runner):
         import json
-        with patch("sentrysearch.store.SentryStore") as MockStore, \
-             patch("sentrysearch.store.list_populated_indexes", return_value=[]):
-            inst = MagicMock()
-            inst.get_stats.return_value = {
-                "total_chunks": 0, "unique_source_files": 0, "source_files": [],
-            }
-            MockStore.return_value = inst
+        with patch("sentrysearch.store.get_all_stats", return_value=[]):
             result = runner.invoke(cli, ["stats", "--json"])
             assert result.exit_code == 0
-            data = json.loads(result.output)
-            assert data == {
-                "backend": None,
-                "model": None,
-                "total_chunks": 0,
-                "unique_source_files": 0,
-                "source_files": [],
-                "missing_files": [],
-            }
+            assert json.loads(result.output) == []
 
-    def test_stats_json_with_data(self, runner, tmp_path):
+    def test_stats_json_one_index_is_a_list(self, runner, tmp_path):
         import json
         file_a = tmp_path / "a.mp4"
         file_b = tmp_path / "b.mp4"
@@ -129,43 +107,42 @@ class TestStatsCommand:
         file_a.write_text("a")
         file_b.write_text("b")
 
-        with patch("sentrysearch.store.SentryStore") as MockStore, \
-             patch("sentrysearch.store.list_populated_indexes",
-                   return_value=[("gemini", None)]):
-            inst = MagicMock()
-            inst.get_stats.return_value = {
-                "total_chunks": 1234,
-                "unique_source_files": 3,
-                "source_files": [str(file_a), str(file_b), str(file_gone)],
-            }
-            MockStore.return_value = inst
+        with patch("sentrysearch.store.get_all_stats", return_value=[{
+            "backend": "gemini",
+            "model": None,
+            "total_chunks": 1234,
+            "unique_source_files": 3,
+            "source_files": [str(file_a), str(file_b), str(file_gone)],
+        }]):
             result = runner.invoke(cli, ["stats", "--json"])
             assert result.exit_code == 0
             data = json.loads(result.output)
-            assert data["backend"] == "gemini"
-            assert data["model"] is None
-            assert data["total_chunks"] == 1234
-            assert data["unique_source_files"] == 3
-            assert data["source_files"] == [str(file_a), str(file_b), str(file_gone)]
-            assert data["missing_files"] == [str(file_gone)]
+            assert isinstance(data, list)
+            assert len(data) == 1
+            assert data[0]["backend"] == "gemini"
+            assert data[0]["model"] is None
+            assert data[0]["total_chunks"] == 1234
+            assert data[0]["unique_source_files"] == 3
+            assert data[0]["source_files"] == [str(file_a), str(file_b), str(file_gone)]
+            assert data[0]["missing_files"] == [str(file_gone)]
 
     def test_stats_multiple_backends(self, runner):
-        with patch("sentrysearch.store.SentryStore") as MockStore, \
-             patch("sentrysearch.store.list_populated_indexes",
-                   return_value=[("gemini", None), ("local", "qwen8b")]):
-            gemini_inst = MagicMock()
-            gemini_inst.get_stats.return_value = {
+        with patch("sentrysearch.store.get_all_stats", return_value=[
+            {
+                "backend": "gemini",
+                "model": None,
                 "total_chunks": 812,
                 "unique_source_files": 20,
                 "source_files": ["/v/gemini.mp4"],
-            }
-            local_inst = MagicMock()
-            local_inst.get_stats.return_value = {
+            },
+            {
+                "backend": "local",
+                "model": "qwen8b",
                 "total_chunks": 340,
                 "unique_source_files": 10,
                 "source_files": ["/v/local.mp4"],
-            }
-            MockStore.side_effect = [gemini_inst, local_inst]
+            },
+        ]):
             result = runner.invoke(cli, ["stats"])
             assert result.exit_code == 0
             assert "812" in result.output
@@ -179,22 +156,22 @@ class TestStatsCommand:
         import json
         file_a = tmp_path / "a.mp4"
         file_a.write_text("a")
-        with patch("sentrysearch.store.SentryStore") as MockStore, \
-             patch("sentrysearch.store.list_populated_indexes",
-                   return_value=[("gemini", None), ("local", "qwen8b")]):
-            gemini_inst = MagicMock()
-            gemini_inst.get_stats.return_value = {
+        with patch("sentrysearch.store.get_all_stats", return_value=[
+            {
+                "backend": "gemini",
+                "model": None,
                 "total_chunks": 812,
                 "unique_source_files": 1,
                 "source_files": [str(file_a)],
-            }
-            local_inst = MagicMock()
-            local_inst.get_stats.return_value = {
+            },
+            {
+                "backend": "local",
+                "model": "qwen8b",
                 "total_chunks": 340,
                 "unique_source_files": 1,
                 "source_files": [str(file_a)],
-            }
-            MockStore.side_effect = [gemini_inst, local_inst]
+            },
+        ]):
             result = runner.invoke(cli, ["stats", "--json"])
             assert result.exit_code == 0
             data = json.loads(result.output)

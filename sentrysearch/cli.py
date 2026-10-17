@@ -1482,55 +1482,26 @@ def overlay(video, output):
 @click.option("--json", "as_json", is_flag=True, default=False, help="Output stats as JSON.")
 def stats(as_json: bool = False):
     """Print index statistics."""
-    from .store import SentryStore, list_populated_indexes
+    from .store import get_all_stats
 
-    # list_populated_indexes() is the source of truth here (not
-    # detect_index(), which returns only the first populated index):
-    # a user may have footage indexed under several backend/model
-    # combinations and stats must report every one of them.
-    # store.get_backend() reads the collection metadata, so on a legacy
-    # index without embedding_backend metadata it answered "gemini" while
-    # detection answered "local" and the two outputs disagreed.
-    indexes = list_populated_indexes()
+    # A user may have footage indexed under several backend/model
+    # combinations, so report every populated index rather than just the
+    # auto-detected one. get_all_stats() reads collections directly and
+    # never creates one.
+    entries = get_all_stats()
+    for e in entries:
+        e["missing_files"] = [f for f in e["source_files"] if not os.path.exists(f)]
 
-    if not indexes:
-        if as_json:
-            click.echo(json.dumps({
-                "backend": None,
-                "model": None,
-                "total_chunks": 0,
-                "unique_source_files": 0,
-                "source_files": [],
-                "missing_files": [],
-            }, indent=2))
-            return
+    if as_json:
+        click.echo(json.dumps(entries, indent=2))
+        return
+
+    if not entries:
         click.echo("Index is empty. Run `sentrysearch index <directory>` first.")
         return
 
-    # Collect stats for every populated index.
-    entries = []
-    for backend, model in indexes:
-        store = SentryStore(backend=backend, model=model)
-        s = store.get_stats()
-        missing_files = [f for f in s["source_files"] if not os.path.exists(f)]
-        entries.append({
-            "backend": backend,
-            "model": model,
-            "total_chunks": s["total_chunks"],
-            "unique_source_files": s["unique_source_files"],
-            "source_files": s["source_files"],
-            "missing_files": missing_files,
-        })
-
-    if as_json:
-        if len(entries) == 1:
-            click.echo(json.dumps(entries[0], indent=2))
-        else:
-            click.echo(json.dumps(entries, indent=2))
-        return
-
     for i, e in enumerate(entries):
-        if len(entries) > 1 and i > 0:
+        if i > 0:
             click.echo("")
         click.echo(f"Total chunks:  {e['total_chunks']}")
         click.echo(f"Source files:  {e['unique_source_files']}")
