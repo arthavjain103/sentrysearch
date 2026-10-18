@@ -173,7 +173,7 @@ def get_all_stats(db_path: str | Path | None = None) -> list[dict]:
     client = chromadb.PersistentClient(path=db_path)
     stats = []
     for backend, model, name in _indexes_with_data(client):
-        entry = {"backend": backend, "model": model}
+        entry = {"backend": backend, "model": model, "collection": name}
         entry.update(_collection_stats(client.get_collection(name)))
         stats.append(entry)
     return stats
@@ -201,8 +201,13 @@ def detect_index(
     only needs the model. Without it, a caller asking for ``mlx`` while a
     ``local`` index also exists would be handed the local model name.
     """
+    db_path = str(db_path or DEFAULT_DB_PATH)
+    if not Path(db_path).exists():
+        return None, None
+    client = chromadb.PersistentClient(path=db_path)
+
     first = None
-    for found_backend, found_model in list_populated_indexes(db_path):
+    for found_backend, found_model, _ in _indexes_with_data(client):
         if backend is not None and found_backend != backend:
             continue
         if backend is not None or _backend_installed(found_backend):

@@ -1508,6 +1508,7 @@ def stats(as_json: bool = False):
         backend_label = e["backend"]
         if e["model"]:
             backend_label += f" ({e['model']})"
+        backend_label += f" [{e['collection']}]"
         click.echo(f"Backend:       {backend_label}")
         click.echo("\nIndexed files:")
         missing_set = set(e["missing_files"])

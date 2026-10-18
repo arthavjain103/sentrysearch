@@ -416,8 +416,9 @@ sentrysearch stats
 
 # Machine-readable JSON: always a list, one object per populated index
 # (keys: backend, model, total_chunks, unique_source_files, source_files,
-# missing_files). Empty list when no index is detected. backend/model are
-# null for the gemini index, source_files is every indexed path, and
+# missing_files, collection). Empty list when no index is detected.
+# model is null for the gemini index (backend is gemini); collection is
+# the ChromaDB collection name. source_files is every indexed path, and
 # missing_files is the subset that is gone.
 sentrysearch stats --json
 

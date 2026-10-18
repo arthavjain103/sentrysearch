@@ -80,6 +80,7 @@ class TestStatsCommand:
              patch("sentrysearch.store.get_all_stats", return_value=[{
                  "backend": "local",
                  "model": "qwen2b",
+                 "collection": "dashcam_chunks_local_qwen2b",
                  "total_chunks": 10,
                  "unique_source_files": 2,
                  "source_files": ["/a/video1.mp4", "/b/video2.mp4"],
@@ -110,6 +111,7 @@ class TestStatsCommand:
         with patch("sentrysearch.store.get_all_stats", return_value=[{
             "backend": "gemini",
             "model": None,
+            "collection": "dashcam_chunks",
             "total_chunks": 1234,
             "unique_source_files": 3,
             "source_files": [str(file_a), str(file_b), str(file_gone)],
@@ -131,6 +133,7 @@ class TestStatsCommand:
             {
                 "backend": "gemini",
                 "model": None,
+                "collection": "dashcam_chunks",
                 "total_chunks": 812,
                 "unique_source_files": 20,
                 "source_files": ["/v/gemini.mp4"],
@@ -138,6 +141,7 @@ class TestStatsCommand:
             {
                 "backend": "local",
                 "model": "qwen8b",
+                "collection": "dashcam_chunks_local_qwen8b",
                 "total_chunks": 340,
                 "unique_source_files": 10,
                 "source_files": ["/v/local.mp4"],
@@ -160,6 +164,7 @@ class TestStatsCommand:
             {
                 "backend": "gemini",
                 "model": None,
+                "collection": "dashcam_chunks",
                 "total_chunks": 812,
                 "unique_source_files": 1,
                 "source_files": [str(file_a)],
@@ -167,6 +172,7 @@ class TestStatsCommand:
             {
                 "backend": "local",
                 "model": "qwen8b",
+                "collection": "dashcam_chunks_local_qwen8b",
                 "total_chunks": 340,
                 "unique_source_files": 1,
                 "source_files": [str(file_a)],

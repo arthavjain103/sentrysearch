@@ -529,6 +529,7 @@ class TestGetAllStats:
         assert get_all_stats(tmp_path / "db") == [{
             "backend": "gemini",
             "model": None,
+            "collection": "dashcam_chunks",
             "total_chunks": 1,
             "unique_source_files": 1,
             "source_files": ["v.mp4"],
@@ -550,6 +551,7 @@ class TestGetAllStats:
         assert stats == [{
             "backend": "local",
             "model": "qwen8b",
+            "collection": "dashcam_chunks_local",
             "total_chunks": 1,
             "unique_source_files": 1,
             "source_files": ["legacy.mp4"],
