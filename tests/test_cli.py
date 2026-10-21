@@ -1839,19 +1839,14 @@ class TestResetCommand:
             assert "already empty" in result.output.lower()
 
     def test_reset_removes_all(self, runner):
-        with patch("sentrysearch.store.SentryStore") as MockStore, \
-             patch("sentrysearch.store.detect_index", return_value=("gemini", None)):
-            inst = MagicMock()
-            inst.get_stats.return_value = {
-                "total_chunks": 10, "unique_source_files": 2,
-                "source_files": ["/a/v1.mp4", "/b/v2.mp4"],
-            }
-            inst.remove_file.return_value = 5
-            MockStore.return_value = inst
+        with patch("sentrysearch.store.reset_indexes", return_value={
+            "total_collections": 1,
+            "total_chunks": 10,
+            "total_files": 2,
+        }):
             result = runner.invoke(cli, ["reset", "--yes"])
             assert result.exit_code == 0
             assert "10" in result.output
-            assert inst.remove_file.call_count == 2
 
 
 class TestRemoveCommand:

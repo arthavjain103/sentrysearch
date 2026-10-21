@@ -1652,32 +1652,21 @@ def stats(as_json: bool = False):
 @click.confirmation_option(prompt="This will delete all indexed data. Continue?")
 def reset(backend, model):
     """Delete all indexed data."""
-    from .store import SentryStore, detect_index
+    from .store import reset_indexes, DEFAULT_DB_PATH
 
     if model is not None and backend is None:
         backend = "local"
-    if backend is None:
-        backend, detected_model = detect_index()
-        backend = backend or "gemini"
-        if model is None:
-            model = detected_model
-    elif backend in ("local", "mlx", "litellm") and model is None:
-        _, model = detect_index(backend=backend)
-    elif backend == "qwen-cloud" and model is None:
-        _, model = detect_index(backend=backend)
-        model = model or default_dashscope_embedding_model()
 
-    store = SentryStore(backend=backend, model=model)
-    s = store.get_stats()
+    summary = reset_indexes(db_path=DEFAULT_DB_PATH, backend=backend, model=model)
 
-    if s["total_chunks"] == 0:
+    if summary["total_collections"] == 0:
         click.echo("Index is already empty.")
         return
 
-    for f in s["source_files"]:
-        store.remove_file(f)
-
-    click.echo(f"Removed {s['total_chunks']} chunks from {s['unique_source_files']} files.")
+    click.echo(
+        f"Removed {summary['total_chunks']} chunks from {summary['total_files']} files "
+        f"across {summary['total_collections']} indexes."
+    )
 
 
 # -----------------------------------------------------------------------

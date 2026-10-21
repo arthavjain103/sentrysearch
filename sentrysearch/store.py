@@ -179,6 +179,47 @@ def get_all_stats(db_path: str | Path | None = None) -> list[dict]:
     return stats
 
 
+def reset_indexes(
+    db_path: str | Path | None = None,
+    backend: str | None = None,
+    model: str | None = None,
+) -> dict:
+    """Delete every populated index matching *backend* and *model*.
+
+    Returns a dict with ``total_collections``, ``total_chunks``, and
+    ``total_files`` describing what was removed. When both *backend* and
+    *model* are None, every populated index is deleted. All matching
+    collections are deleted (legacy and model-suffixed are both removed).
+    """
+    db_path = str(db_path or DEFAULT_DB_PATH)
+    if not Path(db_path).exists():
+        return {"total_collections": 0, "total_chunks": 0, "total_files": 0}
+
+    client = chromadb.PersistentClient(path=db_path)
+    total_collections = 0
+    total_chunks = 0
+    total_files = 0
+
+    for entry_backend, entry_model, name in _indexes_with_data(client):
+        if backend is not None and entry_backend != backend:
+            continue
+        if model is not None and entry_model != model:
+            continue
+
+        col = client.get_collection(name)
+        total_chunks += col.count()
+        all_meta = col.get(include=["metadatas"])
+        total_files += len({m["source_file"] for m in all_meta["metadatas"]})
+        client.delete_collection(name)
+        total_collections += 1
+
+    return {
+        "total_collections": total_collections,
+        "total_chunks": total_chunks,
+        "total_files": total_files,
+    }
+
+
 def detect_index(
     db_path: str | Path | None = None,
     backend: str | None = None,
