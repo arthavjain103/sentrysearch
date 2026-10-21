@@ -1684,42 +1684,18 @@ def remove(files, backend, model):
 
     Accepts full paths or substrings that match indexed file paths.
     """
-    from .store import SentryStore, detect_index
+    from .store import remove_files, DEFAULT_DB_PATH
 
     if model is not None and backend is None:
         backend = "local"
-    if backend is None:
-        backend, detected_model = detect_index()
-        backend = backend or "gemini"
-        if model is None:
-            model = detected_model
-    elif backend in ("local", "mlx", "litellm") and model is None:
-        _, model = detect_index(backend=backend)
-    elif backend == "qwen-cloud" and model is None:
-        _, model = detect_index(backend=backend)
-        model = model or default_dashscope_embedding_model()
 
-    store = SentryStore(backend=backend, model=model)
-    s = store.get_stats()
+    summary = remove_files(db_path=DEFAULT_DB_PATH, backend=backend, model=model, patterns=list(files))
 
-    if s["total_chunks"] == 0:
-        click.echo("Index is empty.")
+    if summary["total_removed"] == 0:
+        click.echo("No matching chunks found.")
         return
 
-    total_removed = 0
-    for pattern in files:
-        # Match against indexed source files (substring match)
-        matches = [f for f in s["source_files"] if pattern in f]
-        if not matches:
-            click.echo(f"No indexed files matching '{pattern}'")
-            continue
-        for source_file in matches:
-            removed = store.remove_file(source_file)
-            click.echo(f"Removed {removed} chunks from {source_file}")
-            total_removed += removed
-
-    if total_removed:
-        click.echo(f"\nTotal: removed {total_removed} chunks.")
+    click.echo(f"Removed {summary['total_removed']} chunks from {summary['total_files']} files.")
 
 
 # -----------------------------------------------------------------------

@@ -220,6 +220,58 @@ def reset_indexes(
     }
 
 
+def remove_files(
+    db_path: str | Path | None = None,
+    backend: str | None = None,
+    model: str | None = None,
+    patterns: list[str] | None = None,
+) -> dict:
+    """Remove files matching *patterns* from indexes matching *backend*/*model*.
+
+    Returns a dict with ``total_removed`` (chunks) and ``total_files`` (source files).
+    """
+    db_path = str(db_path or DEFAULT_DB_PATH)
+    if not Path(db_path).exists():
+        return {"total_removed": 0, "total_files": 0}
+
+    client = chromadb.PersistentClient(path=db_path)
+    total_removed = 0
+    total_files = 0
+
+    for entry_backend, entry_model, name in _indexes_with_data(client):
+        if backend is not None and entry_backend != backend:
+            continue
+        if model is not None and entry_model != model:
+            continue
+
+        col = client.get_collection(name)
+        if patterns:
+            # Get all metadata to find matching files
+            all_meta = col.get(include=["metadatas"])
+            matching_files = set()
+            for meta in all_meta["metadatas"]:
+                source_file = meta["source_file"]
+                if any(p in source_file for p in patterns):
+                    matching_files.add(source_file)
+
+            if matching_files:
+                # Delete matching chunks
+                for source_file in matching_files:
+                    result = col.get(where={"source_file": source_file})
+                    if result["ids"]:
+                        col.delete(ids=result["ids"])
+                        total_removed += len(result["ids"])
+                        total_files += 1
+        else:
+            # No patterns = delete entire collection
+            total_removed += col.count()
+            all_meta = col.get(include=["metadatas"])
+            total_files += len({m["source_file"] for m in all_meta["metadatas"]})
+            client.delete_collection(name)
+
+    return {"total_removed": total_removed, "total_files": total_files}
+
+
 def detect_index(
     db_path: str | Path | None = None,
     backend: str | None = None,
